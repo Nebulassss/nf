@@ -1,0 +1,70 @@
+import json
+import time
+from web3 import Web3
+from web3.middleware import geth_poa_middleware
+
+# Define your Ethereum node provider URL (Infura, Alchemy, etc.)
+INFURA_URL = 'https://mainnet.infura.io/v3/YOUR_INFURA_PROJECT_ID'
+
+# Web3 Setup
+w3 = Web3(Web3.HTTPProvider(INFURA_URL))
+
+# Add POA middleware if using a network like Binance Smart Chain or others
+w3.middleware_stack.inject(geth_poa_middleware, layer=0)
+
+# Aave contract details
+AAVE_LENDING_POOL_ADDRESS = '0x7F5c764a465D1d2d7eE4eB02deF51e23D9a6a9B4'  # Aave V3 Lending Pool Address
+AAVE_LENDING_POOL_ABI = json.loads('[...]')  # ABI JSON of LendingPool contract
+AAVE_ADDRESSES_PROVIDER = '0x24aA5a0c9c597559b6f59b27F7B8554f82c6E98f'  # Aave V3 Address Provider
+FLASHLOAN_RECEIVER_CONTRACT_ADDRESS = '0xYourFlashLoanReceiverContractAddress'
+
+# Your wallet private key and address
+PRIVATE_KEY = '0xYourPrivateKey'
+WALLET_ADDRESS = '0xYourWalletAddress'
+
+# Connect to the Aave LendingPool
+lending_pool = w3.eth.contract(address=AAVE_LENDING_POOL_ADDRESS, abi=AAVE_LENDING_POOL_ABI)
+
+# Set up the Flash Loan receiver contract ABI and address
+flash_loan_receiver_abi = json.loads('[...]')  # ABI of the FlashLoanReceiver contract
+flash_loan_receiver = w3.eth.contract(address=FLASHLOAN_RECEIVER_CONTRACT_ADDRESS, abi=flash_loan_receiver_abi)
+
+# Specify the asset you want to borrow and the amount
+ASSET_ADDRESS = '0xYourAssetAddress'  # For example, WETH or USDC
+BORROW_AMOUNT = w3.toWei(10, 'ether')  # Amount of asset to borrow (e.g., 10 WETH)
+
+def get_nonce():
+    return w3.eth.getTransactionCount(WALLET_ADDRESS)
+
+def initiate_flash_loan():
+    # Prepare transaction to execute the flash loan
+    transaction = lending_pool.functions.flashLoan(
+        flash_loan_receiver.address,
+        [ASSET_ADDRESS],  # assets to borrow (e.g., WETH)
+        [BORROW_AMOUNT],   # amount to borrow
+        [0],               # modes (0 means no debt)
+        WALLET_ADDRESS,    # the address that will receive the flash loan
+        b'0x',             # additional parameters (if any)
+        0                  # referral code (optional)
+    ).buildTransaction({
+        'chainId': 1,  # Mainnet chain id
+        'gas': 300000,  # Estimate gas limit
+        'gasPrice': w3.toWei('40', 'gwei'),  # Gas price
+        'nonce': get_nonce(),
+        'from': WALLET_ADDRESS
+    })
+
+    # Sign the transaction
+    signed_txn = w3.eth.account.sign_transaction(transaction, PRIVATE_KEY)
+
+    # Send the transaction
+    txn_hash = w3.eth.sendRawTransaction(signed_txn.rawTransaction)
+
+    print(f"Flash loan initiated! Transaction hash: {txn_hash.hex()}")
+
+    # Wait for the transaction to be mined
+    receipt = w3.eth.waitForTransactionReceipt(txn_hash)
+    print(f"Transaction receipt: {receipt}")
+
+if __name__ == '__main__':
+    initiate_flash_loan()
